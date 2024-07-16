@@ -70,7 +70,7 @@ void checkForUpdate() {
             showStatusMessage(buffer);
             performOTA();
         } else {
-            showStatusMessage("Firmware is up to date.");
+            showStatusMessage("Firmware ta atualizado.");
             waitForButtonPress();
         }
     } else {
