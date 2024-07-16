@@ -1,5 +1,5 @@
 #include "globals.h"
-
+#include "upnew.h"
 #include <EEPROM.h>
 #include <iostream>
 #include <functional>
@@ -270,6 +270,7 @@ void loop() {
             {"LittleFS", [=]()      { loopSD(LittleFS); }},
             {"WebUI", [=]()         { loopOptionsWebUi(); }},
             {"Megalodon", [=]()     { shark_setup(); }},
+            {"Update", [=]()        { checkForUpdate(); }}
           };
           #ifdef CARDPUTER
           options.push_back({"BadUSB", [=]()        { usb_setup(); }});
