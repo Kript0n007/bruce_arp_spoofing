@@ -54,7 +54,7 @@ void checkForUpdate() {
     tft.println("Checking for updates...");
     tft.setTextSize(1);
 
-    showStatusMessage("Checking for firmware version...");
+    showStatusMessage("Checking for firmware versiiiion...");
     client.setInsecure();  // Desabilitar verificação de certificado para simplicidade
     http.begin(client, versionUrl);
     int httpCode = http.GET();
