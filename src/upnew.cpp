@@ -8,7 +8,7 @@ extern TFT_eSPI tft;  // Usa a definição externa do objeto tft
 
 const char* versionUrl = "https://kript0n007.github.io/bruce_arp_spoofing/version.txt";
 const char* firmwareUrl = "https://kript0n007.github.io/bruce_arp_spoofing/firmware.bin";
-const char* currentVersion = "1.3"; 
+const char* currentVersion = "1.4"; 
 
 void performOTA();
 
