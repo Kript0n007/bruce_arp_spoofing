@@ -6,9 +6,9 @@
 
 extern TFT_eSPI tft;  // Usa a definição externa do objeto tft
 
-const char* versionUrl = "https://kript0n007.github.io/teste_esp/version.txt";
-const char* firmwareUrl = "https://kript0n007.github.io/teste_esp/firmware.bin";
-const char* currentVersion = "1.2"; // Versão atual do firmware
+const char* versionUrl = "https://kript0n007.github.io/bruce_arp_spoofing/version.txt";
+const char* firmwareUrl = "https://kript0n007.github.io/bruce_arp_spoofing/firmware.bin";
+const char* currentVersion = "1.3"; 
 
 void performOTA();
 
@@ -38,6 +38,11 @@ void waitForButtonPress() {
     }
 }
 
+int versionToInt(String version) {
+    version.replace(".", "");
+    return version.toInt();
+}
+
 void checkForUpdate() {
     WiFiClientSecure client;  // Use WiFiClientSecure para HTTPS
     HTTPClient http;
@@ -61,16 +66,27 @@ void checkForUpdate() {
 
     if (httpCode == HTTP_CODE_OK) {
         String newVersion = http.getString();
-
         newVersion.trim(); // Remove whitespace
 
-        if (newVersion != currentVersion) {
+        int newVersionInt = versionToInt(newVersion);
+        int currentVersionInt = versionToInt(currentVersion);
+
+        Serial.print("Current version: ");
+        Serial.println(currentVersion);
+        Serial.print("Current version int: ");
+        Serial.println(currentVersionInt);
+        Serial.print("New version: ");
+        Serial.println(newVersion);
+        Serial.print("New version int: ");
+        Serial.println(newVersionInt);
+
+        if (newVersionInt > currentVersionInt) {
             char buffer[50];
             sprintf(buffer, "New version available: %s", newVersion.c_str());
             showStatusMessage(buffer);
             performOTA();
         } else {
-            showStatusMessage("Firmware ta atualizado.");
+            showStatusMessage("Firmware is up to date.");
             waitForButtonPress();
         }
     } else {
