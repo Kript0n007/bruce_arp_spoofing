@@ -2,13 +2,17 @@
 #include <HTTPClient.h>
 #include <Update.h>
 #include <TFT_eSPI.h>
+#include <Wire.h>
+#include <SPI.h>
+#include <FS.h>
+#include <SPIFFS.h>
 #include "update.h"
 
 extern TFT_eSPI tft;  // Usa a definição externa do objeto tft
 
 const char* versionUrl = "https://kript0n007.github.io/bruce_arp_spoofing/version.txt";
 const char* firmwareUrl = "https://kript0n007.github.io/bruce_arp_spoofing/firmware.bin";
-const char* currentVersion = "1.5"; 
+const char* currentVersion = "1.6"; 
 
 void performOTA();
 
@@ -54,15 +58,10 @@ void checkForUpdate() {
     tft.println("Checking for updates...");
     tft.setTextSize(1);
 
-    showStatusMessage("Checking for firmware versiooooooooooooon...");
+    showStatusMessage("Checking for firmware version...");
     client.setInsecure();  // Desabilitar verificação de certificado para simplicidade
     http.begin(client, versionUrl);
     int httpCode = http.GET();
-
-    while (http.connected() && (httpCode < 0)) {
-        drawLoadingAnimation();
-        delay(500);
-    }
 
     if (httpCode == HTTP_CODE_OK) {
         String newVersion = http.getString();
@@ -80,10 +79,9 @@ void checkForUpdate() {
         Serial.print("New version int: ");
         Serial.println(newVersionInt);
 
-        if (newVersionInt > currentVersionInt) {
+        if (newVersionInt != currentVersionInt) {
             char buffer[50];
             sprintf(buffer, "New version available: %s", newVersion.c_str());
-            showStatusMessage(buffer);
             performOTA();
         } else {
             showStatusMessage("Firmware is up to date.");
@@ -117,10 +115,10 @@ void performOTA() {
     http.begin(client, firmwareUrl);
     int httpCode = http.GET();
 
-    while (http.connected() && (httpCode < 0)) {
-        drawLoadingAnimation();
-        delay(500);
-    }
+    // while (http.connected() && (httpCode < 0)) {
+    //     drawLoadingAnimation();
+    //     delay(500);
+    // }
 
     if (httpCode == HTTP_CODE_OK) {
         int contentLength = http.getSize();
@@ -132,43 +130,27 @@ void performOTA() {
         Serial.println(canBegin ? "Yes" : "No");
 
         if (canBegin) {
-            showStatusMessage("Begin OTA update...");
-            WiFiClient * stream = http.getStreamPtr();
-            size_t written = Update.writeStream(*stream);
+      Serial.println("Begin OTA update...");
+      WiFiClient * stream = http.getStreamPtr();
+      size_t written = Update.writeStream(*stream);
 
-            Serial.print("Written bytes: ");
-            Serial.println(written);
-
-            if (written == contentLength) {
-                showStatusMessage("OTA update completed!");
-                if (Update.end()) {
-                    showStatusMessage("Update successfully applied, restarting...");
-                    delay(2000);  // Adiciona um atraso para garantir que a mensagem seja exibida
-                    ESP.restart();
-                } else {
-                    showStatusMessage("Update failed.");
-                    showStatusMessage(Update.errorString());
-                    Serial.print("Update failed: ");
-                    Serial.println(Update.errorString());
-                    waitForButtonPress();
-                }
-            } else {
-                char buffer[50];
-                sprintf(buffer, "Written only: %d/%d. Retry?", written, contentLength);
-                showStatusMessage(buffer);
-                waitForButtonPress();
-            }
+      if (written == contentLength) {
+        Serial.println("OTA update completed!");
+        if (Update.end()) {
+          Serial.println("Update successfully applied, restarting...");
+          ESP.restart();
         } else {
-            showStatusMessage("Not enough space to begin OTA update");
-            waitForButtonPress();
+          Serial.printf("Update failed. Error: %s\n", Update.errorString());
         }
+      } else {
+        Serial.printf("Written only : %d/%d. Retry?\n", written, contentLength);
+      }
     } else {
-        char buffer[50];
-        sprintf(buffer, "HTTP error code: %d", httpCode);
-        showStatusMessage("HTTP request failed.");
-        showStatusMessage(http.errorToString(httpCode).c_str());
-        showStatusMessage(buffer);
-        waitForButtonPress();
+      Serial.println("Not enough space to begin OTA update");
     }
-    http.end();
+  } else {
+    Serial.printf("HTTP request failed. Error: %s\n", http.errorToString(httpCode).c_str());
+    Serial.printf("HTTP error code: %d\n", httpCode);
+  }
+  http.end();
 }
