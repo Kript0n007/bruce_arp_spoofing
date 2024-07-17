@@ -8,7 +8,7 @@ extern TFT_eSPI tft;  // Usa a definição externa do objeto tft
 
 const char* versionUrl = "https://kript0n007.github.io/bruce_arp_spoofing/version.txt";
 const char* firmwareUrl = "https://kript0n007.github.io/bruce_arp_spoofing/firmware.bin";
-const char* currentVersion = "1.4"; 
+const char* currentVersion = "1.5"; 
 
 void performOTA();
 
@@ -54,7 +54,7 @@ void checkForUpdate() {
     tft.println("Checking for updates...");
     tft.setTextSize(1);
 
-    showStatusMessage("Checking for firmware versiiiion...");
+    showStatusMessage("Checking for firmware versiooooooooooooon...");
     client.setInsecure();  // Desabilitar verificação de certificado para simplicidade
     http.begin(client, versionUrl);
     int httpCode = http.GET();
@@ -126,10 +126,18 @@ void performOTA() {
         int contentLength = http.getSize();
         bool canBegin = Update.begin(contentLength);
 
+        Serial.print("Content length: ");
+        Serial.println(contentLength);
+        Serial.print("Can begin update: ");
+        Serial.println(canBegin ? "Yes" : "No");
+
         if (canBegin) {
             showStatusMessage("Begin OTA update...");
             WiFiClient * stream = http.getStreamPtr();
             size_t written = Update.writeStream(*stream);
+
+            Serial.print("Written bytes: ");
+            Serial.println(written);
 
             if (written == contentLength) {
                 showStatusMessage("OTA update completed!");
@@ -140,11 +148,13 @@ void performOTA() {
                 } else {
                     showStatusMessage("Update failed.");
                     showStatusMessage(Update.errorString());
+                    Serial.print("Update failed: ");
+                    Serial.println(Update.errorString());
                     waitForButtonPress();
                 }
             } else {
                 char buffer[50];
-                sprintf(buffer, "Written only : %d/%d. Retry?", written, contentLength);
+                sprintf(buffer, "Written only: %d/%d. Retry?", written, contentLength);
                 showStatusMessage(buffer);
                 waitForButtonPress();
             }
