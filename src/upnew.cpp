@@ -2,53 +2,46 @@
 #include <HTTPClient.h>
 #include <Update.h>
 #include <TFT_eSPI.h>
-#include <Wire.h>
-#include <SPI.h>
-#include <FS.h>
-#include <SPIFFS.h>
 #include "update.h"
 
-extern TFT_eSPI tft;  // Usa a definição externa do objeto tft
+extern TFT_eSPI tft;
 
 const char* versionUrl = "https://kript0n007.github.io/bruce_arp_spoofing/version.txt";
 const char* firmwareUrl = "https://kript0n007.github.io/bruce_arp_spoofing/firmware.bin";
-const char* currentVersion = "1.6"; 
+const char* currentVersion = "1.4";
 
+void checkForUpdate();
 void performOTA();
+void showStatusMessage(const char* message);
+void showMemoryInfo();
 
-void drawLoadingAnimation() {
-    static int pos = 0;
-    tft.setCursor(10, 40);
-    tft.fillRect(10, 40, 100, 10, TFT_BLACK);
-    for (int i = 0; i < pos; i++) {
-        tft.print(".");
+void initializePartitionsAndCheckForUpdate() {
+    // Mostrar informações de partições (ajustado para ambiente Arduino)
+    Serial.println("Partição atual:");
+    const esp_partition_t* running = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
+    if (running != NULL) {
+        Serial.printf("Label: %s, Address: 0x%X, Size: 0x%X\n", running->label, running->address, running->size);
     }
-    pos = (pos + 1) % 4;
-}
 
-void showStatusMessage(const char* message) {
-    tft.println(message);
-    Serial.println(message);
-}
-
-void waitForButtonPress() {
-    showStatusMessage("Press the button to exit...");
-    while (true) {
-        if (digitalRead(37) == LOW) {  // SEL_BTN
-            break;
-        }
-        drawLoadingAnimation();
-        delay(500);
+    // Mostrar todas as partições OTA
+    Serial.println("\nPartições OTA:");
+    esp_partition_iterator_t partition_iter = esp_partition_find(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_MIN, NULL);
+    while (partition_iter != NULL) {
+        const esp_partition_t* partition = esp_partition_get(partition_iter);
+        Serial.printf("Label: %s, Address: 0x%X, Size: 0x%X\n", partition->label, partition->address, partition->size);
+        partition_iter = esp_partition_next(partition_iter);
     }
-}
+    esp_partition_iterator_release(partition_iter);
 
-int versionToInt(String version) {
-    version.replace(".", "");
-    return version.toInt();
+    // Mostrar memória disponível
+    showMemoryInfo();
+
+    // Verificar se há atualizações
+    checkForUpdate();
 }
 
 void checkForUpdate() {
-    WiFiClientSecure client;  // Use WiFiClientSecure para HTTPS
+    WiFiClientSecure client;
     HTTPClient http;
 
     tft.fillScreen(TFT_BLACK);
@@ -59,33 +52,24 @@ void checkForUpdate() {
     tft.setTextSize(1);
 
     showStatusMessage("Checking for firmware version...");
-    client.setInsecure();  // Desabilitar verificação de certificado para simplicidade
+    client.setInsecure();
     http.begin(client, versionUrl);
     int httpCode = http.GET();
 
     if (httpCode == HTTP_CODE_OK) {
         String newVersion = http.getString();
-        newVersion.trim(); // Remove whitespace
+        newVersion.trim();
 
-        int newVersionInt = versionToInt(newVersion);
-        int currentVersionInt = versionToInt(currentVersion);
+        Serial.printf("Current version: %s\n", currentVersion);
+        Serial.printf("New version: %s\n", newVersion.c_str());
 
-        Serial.print("Current version: ");
-        Serial.println(currentVersion);
-        Serial.print("Current version int: ");
-        Serial.println(currentVersionInt);
-        Serial.print("New version: ");
-        Serial.println(newVersion);
-        Serial.print("New version int: ");
-        Serial.println(newVersionInt);
-
-        if (newVersionInt != currentVersionInt) {
+        if (newVersion != currentVersion) {
             char buffer[50];
             sprintf(buffer, "New version available: %s", newVersion.c_str());
+            showStatusMessage(buffer);
             performOTA();
         } else {
             showStatusMessage("Firmware is up to date.");
-            waitForButtonPress();
         }
     } else {
         char buffer[50];
@@ -93,13 +77,12 @@ void checkForUpdate() {
         showStatusMessage("HTTP request failed.");
         showStatusMessage(http.errorToString(httpCode).c_str());
         showStatusMessage(buffer);
-        waitForButtonPress();
     }
     http.end();
 }
 
 void performOTA() {
-    WiFiClientSecure client;  // Use WiFiClientSecure para HTTPS
+    WiFiClientSecure client;
     HTTPClient http;
 
     tft.fillScreen(TFT_BLACK);
@@ -110,47 +93,110 @@ void performOTA() {
     tft.setTextSize(1);
 
     showStatusMessage("Checking for firmware update...");
-    client.setInsecure();  // Desabilitar verificação de certificado para simplicidade
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS); // Configura para seguir redirecionamentos
+    client.setInsecure();
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     http.begin(client, firmwareUrl);
     int httpCode = http.GET();
 
-    // while (http.connected() && (httpCode < 0)) {
-    //     drawLoadingAnimation();
-    //     delay(500);
-    // }
-
     if (httpCode == HTTP_CODE_OK) {
         int contentLength = http.getSize();
-        bool canBegin = Update.begin(contentLength);
+        Serial.printf("Content length: %d\n", contentLength);
 
-        Serial.print("Content length: ");
-        Serial.println(contentLength);
-        Serial.print("Can begin update: ");
-        Serial.println(canBegin ? "Yes" : "No");
+        if (contentLength > 0) {
+            bool canBegin = Update.begin(contentLength);
+            Serial.printf("Can begin update: %s\n", canBegin ? "Yes" : "No");
 
-        if (canBegin) {
-      Serial.println("Begin OTA update...");
-      WiFiClient * stream = http.getStreamPtr();
-      size_t written = Update.writeStream(*stream);
+            if (canBegin) {
+                showStatusMessage("Begin OTA update...");
+                WiFiClient * stream = http.getStreamPtr();
+                size_t written = 0;
+                uint8_t buff[128] = { 0 }; // Diminuir o tamanho do buffer para 128 bytes
+                int retryCount = 0;
+                const int maxRetries = 5; // número máximo de tentativas
 
-      if (written == contentLength) {
-        Serial.println("OTA update completed!");
-        if (Update.end()) {
-          Serial.println("Update successfully applied, restarting...");
-          ESP.restart();
+                while (written < contentLength) {
+                    size_t len = stream->available();
+                    if (len) {
+                        int c = stream->readBytes(buff, ((len > sizeof(buff)) ? sizeof(buff) : len));
+                        written += Update.write(buff, c);
+                        Serial.printf("Written bytes: %d\n", written);
+                        retryCount = 0; // Resetar contador de tentativas após sucesso
+                    } else {
+                        delay(50); // Atraso para evitar travamentos
+                        retryCount++;
+                        if (retryCount > maxRetries) {
+                            showStatusMessage("Error: Too many retries.");
+                            Update.abort();
+                            return;
+                        }
+                    }
+                    // Verificação de memória disponível
+                    showMemoryInfo();
+                    size_t freeHeap = ESP.getFreeHeap();
+                    if (freeHeap < 10000) { // Se a memória livre for menor que 10KB, abortar
+                        showStatusMessage("Error: Not enough memory.");
+                        Update.abort();
+                        return;
+                    }
+                }
+
+                if (written == contentLength) {
+                    showStatusMessage("OTA update completed!");
+                    if (Update.end()) {
+                        showStatusMessage("Update successfully applied, restarting...");
+                        delay(2000);
+                        ESP.restart();
+                    } else {
+                        showStatusMessage("Update failed.");
+                        showStatusMessage(Update.errorString());
+                        // Serial.printf("Update failed: %s\n", Update.errorString().c_str());
+                    }
+                } else {
+                    char buffer[50];
+                    sprintf(buffer, "Written only: %d/%d. Retry?", written, contentLength);
+                    showStatusMessage(buffer);
+                    Serial.printf("Written only: %d/%d. Retry?\n", written, contentLength);
+                }
+            } else {
+                showStatusMessage("Not enough space to begin OTA update");
+            }
         } else {
-          Serial.printf("Update failed. Error: %s\n", Update.errorString());
+            showStatusMessage("Content length is 0. Aborting update.");
         }
-      } else {
-        Serial.printf("Written only : %d/%d. Retry?\n", written, contentLength);
-      }
     } else {
-      Serial.println("Not enough space to begin OTA update");
+        char buffer[50];
+        sprintf(buffer, "HTTP error code: %d", httpCode);
+        showStatusMessage("HTTP request failed.");
+        showStatusMessage(http.errorToString(httpCode).c_str());
+        showStatusMessage(buffer);
     }
-  } else {
-    Serial.printf("HTTP request failed. Error: %s\n", http.errorToString(httpCode).c_str());
-    Serial.printf("HTTP error code: %d\n", httpCode);
-  }
-  http.end();
+    http.end();
+}
+
+void showStatusMessage(const char* message) {
+    tft.println(message);
+    Serial.println(message);
+}
+
+void showMemoryInfo() {
+    size_t freeHeap = ESP.getFreeHeap();
+    size_t totalHeap = ESP.getHeapSize();
+    size_t totalPsram = ESP.getPsramSize();
+    size_t freePsram = ESP.getFreePsram();
+
+    Serial.printf("Free heap: %d bytes\n", freeHeap);
+    Serial.printf("Total heap: %d bytes\n", totalHeap);
+    Serial.printf("Total PSRAM: %d bytes\n", totalPsram);
+    Serial.printf("Free PSRAM: %d bytes\n", freePsram);
+
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setTextSize(2);
+    tft.setCursor(10, 10);
+    tft.println("Memory Info:");
+    tft.setTextSize(1);
+    tft.printf("Free heap: %d bytes\n", freeHeap);
+    tft.printf("Total heap: %d bytes\n", totalHeap);
+    tft.printf("Total PSRAM: %d bytes\n", totalPsram);
+    tft.printf("Free PSRAM: %d bytes\n", freePsram);
 }
